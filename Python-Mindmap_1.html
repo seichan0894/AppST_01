@@ -96,6 +96,7 @@
     <button class="primary" id="generate">🚀 マインドマップを生成</button>
     <button id="loadExample">例を読み込む</button>
     <button id="clearInput">🧹 入力クリア</button>
+    <input type="text" id="filename" value="mindmap.html" placeholder="ファイル名.html" style="background:#0b1220; color:#cbd5e1; border:1px solid #334155; padding:9px 12px; border-radius:8px; font-size:13px; width:180px;">
     <button id="download">💾 HTMLとして保存</button>
     <span class="count" id="count"></span>
   </div>
@@ -272,12 +273,25 @@ function setAll(collapse) {
 
 function downloadHTML() {
   const mapHTML = document.getElementById('map').innerHTML;
-  // Expand/Collapse buttons embedded in the standalone file too.
+  
+  // ファイル名の取得
+  let filename = document.getElementById('filename').value.trim();
+  if (!filename) filename = 'mindmap.html';
+  if (!filename.endsWith('.html')) filename += '.html';
+
+  // 保存用HTMLに検索UIを追加
   const controlsBar = `
   <div style="padding:14px 32px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #1e293b;">
     <button onclick="setAll(false)">▶ すべて展開</button>
     <button onclick="setAll(true)">◀ 折りたたみ</button>
+    <span style="margin-left: 20px; color: #94a3b8; font-size: 13px;">検索:</span>
+    <input type="text" id="search-input" placeholder="ノードを検索..." style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:6px; font-size:13px; width:200px;">
+    <button onclick="searchNodes()">検索</button>
+    <button onclick="clearSearch()">クリア</button>
+    <span id="search-count" style="font-size:12px; color:#94a3b8; margin-left:10px;"></span>
   </div>`;
+
+  // 保存用HTMLに埋め込むJavaScript（展開トグル + 検索・部分ハイライトロジック）
   const script = `
 <script>
 function setAll(collapse){
@@ -295,7 +309,106 @@ document.addEventListener('click',function(e){
   var a=n.querySelector('.arrow');
   if(a) a.textContent = li.classList.contains('collapsed') ? '▸' : '▾';
 });
+
+// 正規表現の特殊文字をエスケープする関数
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+}
+
+// 検索機能の追加（部分ハイライト修飾対応）
+function searchNodes() {
+  var query = document.getElementById('search-input').value.trim().toLowerCase();
+  clearSearchHighlights();
+  if (!query) {
+    document.getElementById('search-count').textContent = '';
+    return;
+  }
+  var matchCount = 0;
+  var nodes = document.querySelectorAll('.mm .node');
+  
+  nodes.forEach(function(node) {
+    var spans = node.querySelectorAll('span');
+    var textSpan = null;
+    if (spans.length >= 2) {
+      textSpan = spans[1];
+    } else if (spans.length === 1) {
+      textSpan = spans[0];
+    }
+    
+    if (!textSpan) return;
+
+    // オリジナルのテキストを保存（退避）
+    var origText = textSpan.getAttribute('data-original-text');
+    if (!origText) {
+      origText = textSpan.textContent;
+      textSpan.setAttribute('data-original-text', origText);
+    }
+
+    if (origText.toLowerCase().indexOf(query) !== -1) {
+      matchCount++;
+      node.classList.add('search-match');
+      
+      // テキスト部分を部分修飾
+      var escapedQuery = escapeRegExp(query);
+      var regex = new RegExp(escapedQuery, 'gi');
+      textSpan.innerHTML = origText.replace(regex, function(match) {
+        return '<mark class="match-text">' + match + '</mark>';
+      });
+      
+      // マッチしたノードの親を展開する
+      var parentLi = node.closest('li');
+      while (parentLi) {
+        if (parentLi.classList.contains('collapsed')) {
+          parentLi.classList.remove('collapsed');
+          var parentNode = parentLi.querySelector(':scope > .node');
+          if (parentNode) {
+            var arrow = parentNode.querySelector('.arrow');
+            if (arrow) arrow.textContent = '▾';
+          }
+        }
+        var parentUl = parentLi.parentElement.closest('ul');
+        parentLi = parentUl ? parentUl.closest('li') : null;
+      }
+    }
+  });
+  document.getElementById('search-count').textContent = matchCount + ' 件ヒット';
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-count').textContent = '';
+  clearSearchHighlights();
+}
+
+function clearSearchHighlights() {
+  document.querySelectorAll('.mm .node').forEach(function(node) {
+    node.classList.remove('search-match');
+    
+    var spans = node.querySelectorAll('span');
+    var textSpan = null;
+    if (spans.length >= 2) {
+      textSpan = spans[1];
+    } else if (spans.length === 1) {
+      textSpan = spans[0];
+    }
+    
+    if (textSpan) {
+      var origText = textSpan.getAttribute('data-original-text');
+      if (origText) {
+        textSpan.textContent = origText; // 元のテキストに戻す
+      }
+    }
+  });
+}
+
+document.getElementById('search-input').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') {
+    searchNodes();
+  }
+});
 <\/script>`;
+
+  // 保存用HTMLのテンプレート（ハイライト用のCSSクラスを追加）
   const full = `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8">
 <title>Mind Map</title>
@@ -303,7 +416,7 @@ document.addEventListener('click',function(e){
 body{margin:0;background:linear-gradient(135deg,#0b1220,#0f172a);color:#e2e8f0;font-family:'Segoe UI',Roboto,Arial,sans-serif;}
 .mm,.mm ul{list-style:none;margin:0;padding:0;}
 .mm>ul>li{display:flex;flex-direction:column;align-items:flex-start;}
-.node{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;line-height:1.35;border:1px solid rgba(255,255,255,.1);background:#1e293b;color:#e2e8f0;min-width:120px;max-width:94vw;white-space:normal;overflow:visible;cursor:pointer;user-select:none;position:relative;word-break:break-word;}
+.node{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;line-height:1.35;border:1px solid rgba(255,255,255,.1);background:#1e293b;color:#e2e8f0;min-width:120px;max-width:94vw;white-space:normal;overflow:visible;cursor:pointer;user-select:none;position:relative;word-break:break-word;transition:transform 0.15s ease, box-shadow 0.15s ease;}
 .node:hover{filter:brightness(1.25);}
 .node .arrow{width:14px;text-align:center;color:#64748b;font-size:11px;}
 .node.no-children .arrow{visibility:hidden;}
@@ -321,6 +434,9 @@ body{margin:0;background:linear-gradient(135deg,#0b1220,#0f172a);color:#e2e8f0;f
 .type-main{background:#164e63;border-color:#22d3ee;color:#cffafe;font-weight:600;}
 .type-statement{background:#172033;border-color:#475569;color:#cbd5e1;font-family:'Courier New',monospace;font-size:13px;}
 #map{overflow-x:auto;}
+/* 検索ハイライト用CSS */
+.node.search-match{border-color:#f59e0b !important;box-shadow:0 0 15px rgba(245,158,11,.8) !important;transform:scale(1.03);z-index:10;}
+mark.match-text{background-color:#f59e0b;color:#000000;font-weight:bold;border-radius:2px;padding:0 2px;}
 </style></head><body>
 ${controlsBar}
 <div id="map">${mapHTML}</div>${script}
@@ -328,7 +444,7 @@ ${controlsBar}
   const blob = new Blob([full], { type: 'text/html' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'mindmap.html';
+  a.download = filename;
   a.click();
 }
 
