@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Python → Mind Map Skill</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(135deg, #0b1220, #0f172a);
+    color: #e2e8f0;
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  /* ---------- Editor panel ---------- */
+  .editor { padding: 24px 32px; border-bottom: 1px solid #1e293b; }
+  .editor h1 { margin: 0 0 6px; font-size: 20px; }
+  .editor p.hint { margin: 0 0 14px; color: #94a3b8; font-size: 13px; }
+  textarea {
+    width: 100%; height: 260px; resize: vertical;
+    background: #0b1220; color: #cbd5e1; border: 1px solid #334155;
+    border-radius: 10px; padding: 14px; font-family: 'Courier New', monospace;
+    font-size: 13px; line-height: 1.5;
+  }
+  textarea:focus { outline: none; border-color: #6366f1; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  button {
+    background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+    padding: 9px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  button:hover { background: #334155; }
+  button.primary { background: linear-gradient(135deg,#6366f1,#8b5cf6); border: none; color:#fff; font-weight:600; }
+  button.primary:hover { filter: brightness(1.1); }
+  .count { color:#94a3b8; font-size:12px; margin-left:auto; }
+
+  /* ---------- Controls / legend ---------- */
+  .controls { padding: 14px 32px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 32px 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #cbd5e1; }
+  .dot { width: 12px; height: 12px; border-radius: 4px; }
+
+  /* ---------- Mind map tree ---------- */
+  .mm, .mm ul { list-style: none; margin: 0; padding: 0; }
+  .mm > ul > li { display: flex; flex-direction: column; align-items: flex-start; }
+  .node {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 8px; font-size: 14px; line-height: 1.35;
+    border: 1px solid rgba(255,255,255,0.10); background: #1e293b; color: #e2e8f0;
+    min-width: 120px; max-width: 94vw; white-space: normal; overflow: visible;
+    cursor: pointer; user-select: none; position: relative; word-break: break-word;
+    transition: filter .15s, transform .1s;
+  }
+  .node:hover { filter: brightness(1.25); }
+  .node .arrow { width: 14px; text-align: center; color: #64748b; font-size: 11px; flex: none; }
+  .node.no-children { cursor: default; }
+  .node.no-children .arrow { visibility: hidden; }
+  .mm ul.children {
+    display: flex; flex-direction: column; gap: 10px; position: relative;
+    padding-left: 34px; padding-top: 12px; padding-bottom: 12px;
+  }
+  .mm li.node-row { display: flex; flex-direction: row; align-items: center; }
+  .mm ul.children::before {
+    content: ""; position: absolute; top: 12px; left: 10px;
+    height: calc(100% - 24px); width: 2px; background: #334155;
+  }
+  .mm ul.children > li.node-row > .node::before {
+    content: ""; position: absolute; left: -24px; top: 50%;
+    width: 24px; height: 2px; background: #334155; transform: translateY(-50%);
+  }
+  .mm > ul > li > .node::after {
+    content: ""; position: absolute; bottom: -12px; left: 50%;
+    width: 2px; height: 12px; background: #334155; transform: translateX(-50%);
+  }
+  .mm li.collapsed ul.children { display: none; }
+
+  .type-root   { background: linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-weight:600; }
+  .type-class  { background:#1e3a8a; border-color:#3b82f6; color:#dbeafe; font-weight:600; }
+  .type-method { background:#064e3b; border-color:#34d399; color:#d1fae5; }
+  .type-decorator{ background:#78350f; border-color:#f59e0b; color:#fef3c7; font-style:italic; }
+  .type-import { background:#831843; border-color:#fb7185; color:#ffe4f0; }
+  .type-main   { background:#164e63; border-color:#22d3ee; color:#cffafe; font-weight:600; }
+  .type-statement{ background:#172033; border-color:#475569; color:#cbd5e1; font-family:'Courier New',monospace; font-size:13px; }
+
+  #map { padding: 24px 32px; min-height: 200px; overflow-x: auto; }
+  .empty { color:#64748b; padding: 40px; text-align:center; }
+</style>
+</head>
+<body>
+
+<div class="editor">
+  <h1>🐍 Python → Mind Map Skill</h1>
+  <p class="hint">任意のPythonコードを貼り付けて「マインドマップを生成」をクリックすると、段下げレベルに応じたインタラクティブなマインドマップが出来ます。</p>
+  <textarea id="code" spellcheck="false"></textarea>
+  <div class="row">
+    <button class="primary" id="generate">🚀 マインドマップを生成</button>
+    <button id="loadExample">例を読み込む</button>
+    <button id="clearInput">🧹 入力クリア</button>
+    <button id="download">💾 HTMLとして保存</button>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="expandAll2">▶ すべて展開</button>
+  <button id="collapseAll2">◀ 折りたたみ</button>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="dot" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"></span>Root / Module</div>
+  <div class="legend-item"><span class="dot" style="background:#1e3a8a;border:1px solid #3b82f6"></span>class</div>
+  <div class="legend-item"><span class="dot" style="background:#064e3b;border:1px solid #34d399"></span>def method</div>
+  <div class="legend-item"><span class="dot" style="background:#78350f;border:1px solid #f59e0b"></span>@decorator</div>
+  <div class="legend-item"><span class="dot" style="background:#831843;border:1px solid #fb7185"></span>import / from</div>
+  <div class="legend-item"><span class="dot" style="background:#164e63;border:1px solid #22d3ee"></span>if __main__</div>
+  <div class="legend-item"><span class="dot" style="background:#172033;border:1px solid #475569"></span>statement</div>
+</div>
+
+<div id="map"><div class="empty">↑ ここにマインドマップが表示されます。上のテキストボックスにコードを貼り付けて生成してください。</div></div>
+
+<script>
+/* ============================================================
+   Python → Mind Map Skill
+   - 段下げ（インデント）レベル = マインドマップの表示レベル
+   ============================================================ */
+
+const EXAMPLE = `import numpy as np
+import torch
+import torch.nn as nn
+from typing import List, Tuple, Dict, Optional
+
+@dataclass
+class System1Config:
+    """Configuration parameters for System 1 cognitive architecture"""
+    max_candidates: int = 1000
+    path_length: int = 50
+    embedding_dim: int = 256
+
+class StateRepresentation:
+    def __init__(self, initial_data=None):
+        self.state_vector = np.random.rand(256).astype(np.float32)
+
+    def update(self, new_input):
+        self.state_vector = self.state_vector * 0.9 + np.random.rand(256) * 0.1
+
+class System1CognitiveEngine:
+    def __init__(self, config=None):
+        self.config = config or System1Config()
+        self.current_state = StateRepresentation()
+
+    def process_cognitive_cycle(self, input_data):
+        state = self.process_input(input_data)
+        candidates = self.generate_candidates()
+        selected = self.evaluate_and_select(candidates)
+        return self.execute_response(selected)
+
+if __name__ == "__main__":
+    engine = System1CognitiveEngine()
+    result = engine.process_cognitive_cycle({})
+    print(result)`;
+
+function detectType(text) {
+  if (/^class\s/.test(text)) return 'class';
+  if (/^(async\s+)?def\s/.test(text)) return 'method';
+  if (/^@/.test(text)) return 'decorator';
+  if (/^(import|from)\s/.test(text)) return 'import';
+  if (text.includes('__main__')) return 'main';
+  return 'statement';
+}
+function matchTriple(line) { const m = line.match(/("""|''')/); return m ? m[1] : null; }
+function countOcc(str, q) { let c = 0; for (let i = 0; i < str.length; i++) if (str[i] === q) c++; return c; }
+
+// Parse Python into a tree based on indentation level.
+function parseCode(src) {
+  const root = { text: '📦 Module', type: 'root', children: [] };
+  const stack = [{ indent: -1, node: root }];
+  let inDoc = false, docQuote = '';
+
+  const lines = src.replace(/\t/g, '    ').split('\n');
+  for (const raw of lines) {
+    if (!raw.trim()) continue;
+    if (inDoc) { if (raw.includes(docQuote)) inDoc = false; continue; }
+    const q = matchTriple(raw);
+    if (q && countOcc(raw, q) === 1) { addNode(raw, raw.trim()); inDoc = true; docQuote = q; continue; }
+    addNode(raw, raw.trim());
+  }
+  return root;
+
+  function addNode(raw, text) {
+    const indent = raw.length - raw.trimStart().length;
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+    const node = { text: text.replace(/\s+$/, ''), type: detectType(text), children: [] };
+    stack[stack.length - 1].node.children.push(node);
+    stack.push({ indent, node });
+  }
+}
+
+function makeNodeDiv(node) {
+  const hasKids = node.children.length > 0;
+  const div = document.createElement('div');
+  div.className = 'node type-' + node.type + (hasKids ? '' : ' no-children');
+  if (hasKids) div.title = 'クリックで展開/折りたたみ';
+  const arrow = document.createElement('span');
+  arrow.className = 'arrow';
+  arrow.textContent = hasKids ? '▾' : '';
+  div.appendChild(arrow);
+  const text = document.createElement('span');
+  text.textContent = node.text;
+  div.appendChild(text);
+  return div;
+}
+
+function renderChildren(nodes) {
+  const ul = document.createElement('ul');
+  ul.className = 'children';
+  for (const n of nodes) {
+    const li = document.createElement('li');
+    li.className = 'node-row';
+    const div = makeNodeDiv(n);
+    if (n.children.length > 0) div.appendChild(renderChildren(n.children));
+    li.appendChild(div);
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
+function buildMap(src) {
+  const wrap = document.getElementById('map');
+  wrap.innerHTML = '';
+  const root = parseCode(src);
+  const ul = document.createElement('ul');
+  ul.className = 'mm';
+  const li = document.createElement('li');
+  li.appendChild(makeNodeDiv(root));
+  if (root.children.length) li.appendChild(renderChildren(root.children));
+  ul.appendChild(li);
+  wrap.appendChild(ul);
+
+  let total = 0;
+  (function walk(n){ total += 1 + n.children.length; n.children.forEach(walk); })(root);
+  document.getElementById('count').textContent = 'ノード数: ' + total;
+
+  attachToggle();
+}
+
+function emptyMap() {
+  document.getElementById('map').innerHTML = '<div class="empty">コードが入力されていません。上のテキストボックスにPythonコードを貼り付けて生成してください。</div>';
+  document.getElementById('count').textContent = '';
+}
+
+function attachToggle() {
+  document.querySelectorAll('.node').forEach(n => {
+    n.addEventListener('click', e => {
+      e.stopPropagation();
+      const li = n.closest('li');
+      if (!li) return;
+      li.classList.toggle('collapsed');
+      const arrow = n.querySelector('.arrow');
+      if (arrow) arrow.textContent = li.classList.contains('collapsed') ? '▸' : '▾';
+    });
+  });
+}
+
+function setAll(collapse) {
+  document.querySelectorAll('.mm li').forEach(li => {
+    if (collapse) li.classList.add('collapsed'); else li.classList.remove('collapsed');
+  });
+  document.querySelectorAll('.mm .node .arrow').forEach(a => {
+    a.textContent = collapse ? '▸' : '▾';
+  });
+}
+
+function downloadHTML() {
+  const mapHTML = document.getElementById('map').innerHTML;
+  // Expand/Collapse buttons embedded in the standalone file too.
+  const controlsBar = `
+  <div style="padding:14px 32px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #1e293b;">
+    <button onclick="setAll(false)">▶ すべて展開</button>
+    <button onclick="setAll(true)">◀ 折りたたみ</button>
+  </div>`;
+  const script = `
+<script>
+function setAll(collapse){
+  document.querySelectorAll('.mm li').forEach(function(li){
+    if (collapse) li.classList.add('collapsed'); else li.classList.remove('collapsed');
+  });
+  document.querySelectorAll('.mm .node .arrow').forEach(function(a){
+    a.textContent = collapse ? '▸' : '▾';
+  });
+}
+document.addEventListener('click',function(e){
+  var n=e.target.closest('.node'); if(!n) return;
+  var li=n.closest('li'); if(!li) return;
+  li.classList.toggle('collapsed');
+  var a=n.querySelector('.arrow');
+  if(a) a.textContent = li.classList.contains('collapsed') ? '▸' : '▾';
+});
+<\/script>`;
+  const full = `<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>Mind Map</title>
+<style>
+body{margin:0;background:linear-gradient(135deg,#0b1220,#0f172a);color:#e2e8f0;font-family:'Segoe UI',Roboto,Arial,sans-serif;}
+.mm,.mm ul{list-style:none;margin:0;padding:0;}
+.mm>ul>li{display:flex;flex-direction:column;align-items:flex-start;}
+.node{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;line-height:1.35;border:1px solid rgba(255,255,255,.1);background:#1e293b;color:#e2e8f0;min-width:120px;max-width:94vw;white-space:normal;overflow:visible;cursor:pointer;user-select:none;position:relative;word-break:break-word;}
+.node:hover{filter:brightness(1.25);}
+.node .arrow{width:14px;text-align:center;color:#64748b;font-size:11px;}
+.node.no-children .arrow{visibility:hidden;}
+.mm ul.children{display:flex;flex-direction:column;gap:10px;position:relative;padding-left:34px;padding-top:12px;padding-bottom:12px;}
+.mm li.node-row{display:flex;flex-direction:row;align-items:center;}
+.mm ul.children::before{content:"";position:absolute;top:12px;left:10px;height:calc(100% - 24px);width:2px;background:#334155;}
+.mm ul.children>li.node-row>.node::before{content:"";position:absolute;left:-24px;top:50%;width:24px;height:2px;background:#334155;transform:translateY(-50%);}
+.mm>ul>li>.node::after{content:"";position:absolute;bottom:-12px;left:50%;width:2px;height:12px;background:#334155;transform:translateX(-50%);}
+.mm li.collapsed ul.children{display:none;}
+.type-root{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:600;}
+.type-class{background:#1e3a8a;border-color:#3b82f6;color:#dbeafe;font-weight:600;}
+.type-method{background:#064e3b;border-color:#34d399;color:#d1fae5;}
+.type-decorator{background:#78350f;border-color:#f59e0b;color:#fef3c7;font-style:italic;}
+.type-import{background:#831843;border-color:#fb7185;color:#ffe4f0;}
+.type-main{background:#164e63;border-color:#22d3ee;color:#cffafe;font-weight:600;}
+.type-statement{background:#172033;border-color:#475569;color:#cbd5e1;font-family:'Courier New',monospace;font-size:13px;}
+#map{overflow-x:auto;}
+</style></head><body>
+${controlsBar}
+<div id="map">${mapHTML}</div>${script}
+</body></html>`;
+  const blob = new Blob([full], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mindmap.html';
+  a.click();
+}
+
+// Wire up UI
+document.getElementById('code').value = EXAMPLE;
+document.getElementById('generate').addEventListener('click', () => buildMap(document.getElementById('code').value));
+document.getElementById('loadExample').addEventListener('click', () => { document.getElementById('code').value = EXAMPLE; buildMap(EXAMPLE); });
+document.getElementById('clearInput').addEventListener('click', () => {
+  document.getElementById('code').value = '';
+  document.getElementById('code').focus();
+  emptyMap();
+});
+document.getElementById('download').addEventListener('click', downloadHTML);
+document.getElementById('expandAll2').addEventListener('click', () => setAll(false));
+document.getElementById('collapseAll2').addEventListener('click', () => setAll(true));
+
+// Initial render
+buildMap(EXAMPLE);
+</script>
+</body>
+</html>
