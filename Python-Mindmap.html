@@ -94,9 +94,9 @@
   <textarea id="code" spellcheck="false"></textarea>
   <div class="row">
     <button class="primary" id="generate">🚀 マインドマップを生成</button>
-    <button id="loadExample">例を読み込む</button>
     <button id="clearInput">🧹 入力クリア</button>
-    <input type="text" id="filename" value="mindmap.html" placeholder="ファイル名.html" style="background:#0b1220; color:#cbd5e1; border:1px solid #334155; padding:9px 12px; border-radius:8px; font-size:13px; width:180px;">
+    <input type="text" id="filename" value="mindmap.mm" placeholder="ファイル名 (.mm / .html)" style="background:#0b1220; color:#cbd5e1; border:1px solid #334155; padding:9px 12px; border-radius:8px; font-size:13px; width:360px;">
+    <button id="downloadMM">💾 .mmとして保存</button>
     <button id="download">💾 HTMLとして保存</button>
     <span class="count" id="count"></span>
   </div>
@@ -277,7 +277,11 @@ function downloadHTML() {
   // ファイル名の取得
   let filename = document.getElementById('filename').value.trim();
   if (!filename) filename = 'mindmap.html';
-  if (!filename.endsWith('.html')) filename += '.html';
+  if (filename.endsWith('.mm')) {
+    filename = filename.replace(/\.mm$/, '.html');
+  } else if (!filename.endsWith('.html')) {
+    filename += '.html';
+  }
 
   // 保存用HTMLに検索UIを追加
   const controlsBar = `
@@ -448,15 +452,106 @@ ${controlsBar}
   a.click();
 }
 
+/* ============================================================
+   FreeMind (.mm) エクスポート機能
+   - 各ノードのタイプに応じた配色・スタイルをXML属性として付与
+   ============================================================ */
+
+const TYPE_COLORS = {
+  root:      { bg: '#6366f1', color: '#ffffff', edge: '#8b5cf6', bold: true, italic: false },
+  module:    { bg: '#4f46e5', color: '#ffffff', edge: '#6366f1', bold: true, italic: false },
+  class:     { bg: '#1e3a8a', color: '#dbeafe', edge: '#3b82f6', bold: true, italic: false },
+  method:    { bg: '#064e3b', color: '#d1fae5', edge: '#34d399', bold: false, italic: false },
+  decorator: { bg: '#78350f', color: '#fef3c7', edge: '#f59e0b', bold: false, italic: true },
+  import:    { bg: '#831843', color: '#ffe4f0', edge: '#fb7185', bold: false, italic: false },
+  main:      { bg: '#164e63', color: '#cffafe', edge: '#22d3ee', bold: true, italic: false },
+  statement: { bg: '', color: '#000000', edge: '#94a3b8', bold: false, italic: false }
+};
+
+function escapeXml(unsafe) {
+  return unsafe.replace(/[<>&'"]/g, function (c) {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+    }
+  });
+}
+
+function nodeToXml(node, isFirstLevel = false) {
+  const conf = TYPE_COLORS[node.type] || TYPE_COLORS.statement;
+  const text = escapeXml(node.text);
+  const positionAttr = isFirstLevel ? ' POSITION="right"' : '';
+  const bgAttr = conf.bg ? ` BACKGROUND_COLOR="${conf.bg}" STYLE="bubble"` : '';
+  let xml = `    <node TEXT="${text}" COLOR="${conf.color}"${bgAttr}${positionAttr}>\n`;
+  if (conf.edge) {
+    xml += `      <edge COLOR="${conf.edge}"/>\n`;
+  }
+  let fontAttrs = 'NAME="SansSerif" SIZE="12"';
+  if (conf.bold) fontAttrs += ' BOLD="true"';
+  if (conf.italic) fontAttrs += ' ITALIC="true"';
+  xml += `      <font ${fontAttrs}/>\n`;
+
+  if (node.children && node.children.length > 0) {
+    for (const child of node.children) {
+      xml += nodeToXml(child, false);
+    }
+  }
+  xml += `    </node>\n`;
+  return xml;
+}
+
+function generateFreeMindXml(src) {
+  const root = parseCode(src);
+  let xml = '<map version="1.0.1">\n';
+  xml += `  <node TEXT="Python" COLOR="#ffffff" BACKGROUND_COLOR="#6366f1" STYLE="bubble">\n`;
+  xml += `    <font NAME="SansSerif" SIZE="14" BOLD="true"/>\n`;
+  xml += `    <node TEXT="Module" COLOR="#ffffff" BACKGROUND_COLOR="#4f46e5" STYLE="bubble" POSITION="right">\n`;
+  xml += `      <font NAME="SansSerif" SIZE="12" BOLD="true"/>\n`;
+  if (root.children && root.children.length > 0) {
+    for (const child of root.children) {
+      xml += nodeToXml(child, false);
+    }
+  }
+  xml += `    </node>\n`;
+  xml += `  </node>\n`;
+  xml += '</map>\n';
+  return xml;
+}
+
+function downloadMM() {
+  const src = document.getElementById('code').value;
+  if (!src.trim()) {
+    alert('コードが入力されていません。');
+    return;
+  }
+  const xml = generateFreeMindXml(src);
+  let filename = document.getElementById('filename').value.trim();
+  if (!filename) filename = 'mindmap.mm';
+  if (filename.endsWith('.html')) {
+    filename = filename.replace(/\.html$/, '.mm');
+  } else if (!filename.endsWith('.mm')) {
+    filename += '.mm';
+  }
+
+  const blob = new Blob([xml], { type: 'application/x-freemind;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
 // Wire up UI
 document.getElementById('code').value = EXAMPLE;
 document.getElementById('generate').addEventListener('click', () => buildMap(document.getElementById('code').value));
-document.getElementById('loadExample').addEventListener('click', () => { document.getElementById('code').value = EXAMPLE; buildMap(EXAMPLE); });
 document.getElementById('clearInput').addEventListener('click', () => {
   document.getElementById('code').value = '';
   document.getElementById('code').focus();
   emptyMap();
 });
+document.getElementById('downloadMM').addEventListener('click', downloadMM);
 document.getElementById('download').addEventListener('click', downloadHTML);
 document.getElementById('expandAll2').addEventListener('click', () => setAll(false));
 document.getElementById('collapseAll2').addEventListener('click', () => setAll(true));
